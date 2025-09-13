@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.v1 import stocks, chat, ingest, tools
-from core.logging import setup_logging
-from core.deps import get_httpx_client, close_httpx_client, get_chroma_client
+from backend.api.v1 import stocks,info
+from backend.common.logger import setup_logging
+from backend.common.deps import get_chroma_client
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -10,8 +10,6 @@ setup_logging()
 
 @asynccontextmanager  # type: ignore[return-value]
 async def lifespan(app) -> AsyncGenerator[None, None]:
-    # Startup logic
-    get_httpx_client()
     try:
         get_chroma_client()
     except Exception:
@@ -19,7 +17,7 @@ async def lifespan(app) -> AsyncGenerator[None, None]:
     try:
         yield
     finally:
-        await close_httpx_client()
+        pass
 
 app = FastAPI(title="Signally Gateway", lifespan=lifespan)
 
@@ -33,10 +31,8 @@ app.add_middleware(
 )
 
 # include routers
-app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
-app.include_router(ingest.router, prefix="/api/v1/ingest", tags=["ingest"])
-app.include_router(tools.router, prefix="/api/v1/tools", tags=["tools"])
 app.include_router(stocks.router, prefix="/api/v1/stocks", tags=["stocks"])
+app.include_router(info.router, prefix="/api/v1/info", tags=["info"])
 
 
 @app.get("/health")

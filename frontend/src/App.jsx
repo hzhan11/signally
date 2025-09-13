@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Lightbulb, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function SignallyApp() {
-  const [currentDate, setCurrentDate] = useState(new Date(2012, 3, 22)); // April 22, 2012
-  const [stocks, setStocks] = useState([]);
-  const [selectedTab, setSelectedTab] = useState('');
+  const [currentDate, setCurrentDate] = useState(new Date(2012, 3, 22));
+  const [stocks, setStocks] = useState([]); // array of {id,name,metadata}
+  const [selectedTab, setSelectedTab] = useState(''); // will store id string
   const [loadingStocks, setLoadingStocks] = useState(true);
   const [stocksError, setStocksError] = useState(null);
 
@@ -19,11 +19,20 @@ export default function SignallyApp() {
         const res = await fetch(`${API_BASE}/api/v1/stocks/list`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        // data might be an object/set; coerce to array
         const list = Array.isArray(data) ? data : Object.values(data);
+        // normalize items to objects with id,name,metadata
+        const normalized = list.map(item => {
+          if (!item) return null;
+          if (typeof item === 'string') return { id: item, name: item, metadata: {} };
+          return {
+            id: item.id ?? (item.metadata && item.metadata.id) ?? String(item.name ?? ''),
+            name: item.name ?? (item.metadata && item.metadata.name) ?? String(item.id ?? ''),
+            metadata: item.metadata ?? {},
+          };
+        }).filter(Boolean);
         if (mounted) {
-          setStocks(list);
-          if (!selectedTab && list.length > 0) setSelectedTab(list[0]);
+          setStocks(normalized);
+          if (!selectedTab && normalized.length > 0) setSelectedTab(normalized[0].id);
         }
       } catch (err) {
         if (mounted) setStocksError(err.message || String(err));
@@ -92,6 +101,9 @@ export default function SignallyApp() {
     return days;
   };
 
+  // helper to find selected stock object
+  const selectedStock = stocks.find(s => s.id === selectedTab) || null;
+
   return (
     <div className="min-h-screen bg-gray-50 flex justify-center">
       <div className="w-full max-w-md bg-white shadow-lg">
@@ -130,28 +142,33 @@ export default function SignallyApp() {
             ) : stocksError ? (
               <div className="text-sm text-red-500">Error: {stocksError}</div>
             ) : (
-              (stocks.length ? stocks : ['(no stocks)']).map((tab, idx) => (
-                <button
-                  key={String(tab) + idx}
-                  onClick={() => setSelectedTab(tab)}
-                  className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-                    selectedTab === tab
-                      ? 'bg-orange-500 text-white'
-                      : idx === 0
-                        ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                        : 'bg-gray-200 text-gray-400 hover:bg-gray-300'
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))
+              (stocks.length ? stocks : [{ id: '(no)', name: '(no stocks)', metadata: {} }]).map((stock, idx) => {
+                const id = stock.id ?? String(idx);
+                const name = stock.name ?? id;
+                const isSelected = selectedTab === id;
+                return (
+                  <button
+                    key={id + idx}
+                    onClick={() => setSelectedTab(id)}
+                    className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
+                      isSelected
+                        ? 'bg-orange-500 text-white'
+                        : idx === 0
+                          ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          : 'bg-gray-200 text-gray-400 hover:bg-gray-300'
+                    }`}
+                  >
+                    {name}
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
 
         {/* Prediction */}
         <div className="px-4 py-4 text-center">
-          {selectedTab === '002594' ? (
+          {selectedStock && selectedStock.metadata && selectedStock.metadata.status === 'active' ? (
             <>
               <div className="text-orange-600 text-lg font-medium">
                 2025/11/2 开盘5分钟预测: <span className="text-blue-600 font-bold">涨</span> ，信心指数：<span className="text-blue-600 font-bold">75%</span>
@@ -166,7 +183,7 @@ export default function SignallyApp() {
         </div>
 
         {/* Calendar */}
-        {selectedTab === '002594' && (
+        {selectedStock && selectedStock.metadata && selectedStock.metadata.status === 'active' && (
           <div className="px-4 pb-6">
             <div className="bg-orange-500 rounded-t px-4 py-2 flex items-center justify-between text-white">
               <button
