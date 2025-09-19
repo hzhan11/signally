@@ -3,12 +3,8 @@ import uuid
 
 from GoogleNews import GoogleNews
 
-from chromadb import HttpClient
-client = HttpClient(host="localhost", port=8001)
-sc = client.get_or_create_collection("info")
-
 googlenews = GoogleNews(lang='cn', region='CHINA')
-googlenews.search('比亚迪')
+googlenews.search('比亚迪 雪球')
 googlenews.set_period('12h')
 
 # Get the results from the first page
@@ -28,17 +24,3 @@ for item in results:
     print(f"Link: {item['link']}")
     print(f"Desc: {item['desc']}")
     print(f"Media: {item['media']}")
-
-    metadata = {
-        "id": str(uuid.uuid4()),
-        "attached_stock_id": "002594",
-        "datetime": item['date'],
-        "type": "news",
-        "title": item['title']
-    }
-
-    sc.upsert(
-        ids=[metadata["id"]],
-        documents=[item['title']+""+item['desc']],
-        metadatas=[metadata]
-    )
