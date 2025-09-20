@@ -7,7 +7,10 @@ from backend.common.sconfig import settings
 from backend.common.utils import bj_time
 from backend.mcp.servers.tools.aksapi import AKSApi
 from backend.mcp.servers.tools.sina import SinaFinSearcher
+from backend.mcp.servers.tools.clstel import ClsTelSearcher
+from backend.mcp.servers.tools.yahoof import YahooFAPI
 from backend.common import logger_client, sconfig
+
 
 mcp = FastMCP("InfoCollector")
 
@@ -23,6 +26,10 @@ async def search(
         agent = SinaFinSearcher(stock["id"], bj_time(offset=12), ctx.report_progress)
     elif settings.INFO_SRC_AKS == src:
         agent = AKSApi(stock["id"], ctx.report_progress)
+    elif settings.INFO_SRC_YHF == src:
+        agent = YahooFAPI(stock["metadata"]["usid"], ctx.report_progress)
+    elif settings.INFO_SRC_CLS == src:
+        agent = ClsTelSearcher(ctx.report_progress)
     else:
         pass
 

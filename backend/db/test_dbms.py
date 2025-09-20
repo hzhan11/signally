@@ -41,6 +41,14 @@ def test_add_info_data():
             metadatas=[metadata]
         )
 
+def test_update_stock():
+    sc = client.get_or_create_collection("stocks")
+    sc.update(
+        ids=["sz002594"],
+        # 更新元数据，会覆盖已有 metadata 对应字段，如果想保留其他字段，需要先获取原来的 metadata
+        metadatas=[{"name": "比亚迪", "usid": "BYDDY"}]
+    )
+
 def test_delete_info_data():
     client.delete_collection("info")
 

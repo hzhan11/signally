@@ -36,7 +36,7 @@ class Orchestrate:
         async with self.sign_pred_client:
             result = await self.sign_pred_client.call_tool("predict", {"news": message})
             logging.info(f"{result}")
-            self.data.append(result.data)
+            self.memory.append(result.data)
 
     async def sign_pred_sampling_handler(
         self,
@@ -62,7 +62,7 @@ class Orchestrate:
         self.google_client = genai.Client(api_key="AIzaSyAf8NARQmskJOPz4QJtGBNZbE1lS3H-CV8")
         self.info_col_client = Client(f"http://localhost:{sconfig.settings.INFO_COL_PORT}/mcp", progress_handler=self.info_col_progress_handler)
         self.sign_pred_client = Client(f"http://localhost:{sconfig.settings.SIGN_PRE_PORT}/mcp",sampling_handler=self.sign_pred_sampling_handler)
-        self.data = []
+        self.memory = []
 
     def get_stock_list(self):
         response = httpx.get(f"http://localhost:{sconfig.settings.API_PORT}/api/v1/stocks/list")
@@ -87,7 +87,7 @@ class Orchestrate:
         logging.info(f"{resp}")
 
     def final(self, stock):
-        json_string = json.dumps(self.data, ensure_ascii=False, indent=2)
+        json_string = json.dumps(self.memory, ensure_ascii=False, indent=2)
         with open("./servers/prompt/final.prompt","r",encoding="utf-8") as f:
             system_prompt = f.read()
             try:
@@ -110,7 +110,9 @@ class Orchestrate:
     async def go_with_info_collector(self, stock):
         logging.info("start to collect news and info...")
         async with self.info_col_client:
+            result = await self.info_col_client.call_tool("search", {"src": settings.INFO_SRC_YHF, "stock": stock})
             result = await self.info_col_client.call_tool("search", {"src":settings.INFO_SRC_AKS,"stock": stock})
+            result = await self.info_col_client.call_tool("search", {"src": settings.INFO_SRC_CLS, "stock": stock})
             result = await self.info_col_client.call_tool("search", {"src":settings.INFO_SRC_SINA,"stock": stock})
         logging.info("start to make the finial decision...")
         self.final(stock)
