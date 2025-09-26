@@ -1,6 +1,7 @@
 import datetime
 import uuid
 import os
+import json
 
 import pytest
 from fastapi import HTTPException
@@ -20,33 +21,12 @@ client = HttpClient(
     settings=Settings(anonymized_telemetry=False)
 )
 
-def test_add_info_data():
-    sc = client.get_or_create_collection("info")
-
-    info_data = [
-        {"id":"88171217-db93-49fa-8034-773078563013", "datetime":"2025-09-10 22:02:44", "content":""},
-    ]
-
-    for one in info_data:
-        metadata = {
-            "id": one["id"],
-            "attached_stock_id": "002594",
-            "datetime": one["datetime"],
-            "type": "news"
-        }
-
-        sc.upsert(
-            ids=[one["id"]],
-            documents=[one["content"]],
-            metadatas=[metadata]
-        )
-
 def test_update_stock():
     sc = client.get_or_create_collection("stocks")
     sc.update(
-        ids=["sz002594"],
+        ids=["sh600010"],
         # 更新元数据，会覆盖已有 metadata 对应字段，如果想保留其他字段，需要先获取原来的 metadata
-        metadatas=[{"name": "比亚迪", "usid": "BYDDY"}]
+        metadatas=[{"name": "包钢股份", "usid": "NA","status":"inactive"}]
     )
 
 def test_delete_info_data():
@@ -60,9 +40,9 @@ def test_delete_info_log():
     client.delete_collection("log")
 
 def test_add_stock():
-    new_documents = ["比亚迪股份有限公司的主营业务是以新能源汽车为主的汽车业务、手机部件及组装业务，二次充电电池及光伏业务，同时利用自身的技术优势积极拓展城市轨道交通业务领域。公司的主要产品是汽车业务、手机部件、组装业务、二次充电电池、光伏业务。"]  # 文档内容
-    new_metadatas = [{"name": "比亚迪"}]  # 元数据
-    new_ids = ["sz002594"]  # 唯一ID
+    new_documents = ["内蒙古包钢钢联股份有限公司的主营业务是矿产资源开发利用、钢铁产品的生产与销售。公司的主要产品是板材、钢管、型材、钢轨、线棒材、稀土钢新材料、稀土精矿、萤石、焦副产品。公司荣获工业和信息化部“工业产品生态设计示范企业”、内蒙古民族品牌建设标杆企业、内蒙古行业标志性品牌、内蒙古百强品牌等荣誉称号。"]  # 文档内容
+    new_metadatas = [{"name": "包钢股份"}]  # 元数据
+    new_ids = ["sh600010"]  # 唯一ID
 
     sc = client.get_or_create_collection("stocks")
 
@@ -97,3 +77,310 @@ def test_append_conclusion():
 def test_clear_conclusion():
     sc = client.get_or_create_collection("conclusions")
     sc.delete(ids=["sz002594_f39159c0-8192-4386-b268-ea958b0424ae","sz002594_15b22733-eb54-4cd5-8ffc-f87114208677","sz002594_6df9f334-6d46-4b5d-bbd7-30e73cc89805"])
+
+def test_add_stock_price_info_data():
+    sc = client.get_or_create_collection("info")
+
+    info_data = [
+        {"id":"77fae6d2-64ca-4a9c-b7f4-0af8d0912a8e", "datetime":"20250926", "content":""},
+    ]
+
+    for one in info_data:
+        metadata = {
+            "id": one["id"],
+            "attached_stock_id": "sz002594",
+            "datetime": one["datetime"],
+            "type": "close",
+            "value": "107.29"
+        }
+
+        sc.upsert(
+            ids=[one["id"]],
+            documents=[one["content"]],
+            metadatas=[metadata]
+        )
+
+# 新增: 打印所有集合的全部数据（分页避免超内存）
+def test_print_all():
+    collections = client.list_collections()
+    if not collections:
+        print("[PRINT_ALL] no collections found")
+        return
+
+    page_size = 100
+    for col in collections:
+        print("")
+        name = getattr(col, 'name', None) or getattr(col, 'id', 'unknown')
+        try:
+            sc = client.get_collection(name)
+        except Exception as e:
+            print(f"[PRINT_ALL] skip collection={name} (cannot get: {e})")
+            continue
+        try:
+            total = sc.count()
+        except Exception as e:
+            print(f"[PRINT_ALL] collection={name} count error: {e}")
+            continue
+        print(f"[PRINT_ALL] collection={name} total={total}")
+        if total == 0:
+            print(f"[PRINT_ALL] collection={name} empty")
+            continue
+        offset = 0
+        while offset < total:
+            try:
+                batch = sc.get(limit=page_size, offset=offset, include=['metadatas','documents'])
+            except Exception as e:
+                print(f"[PRINT_ALL] collection={name} get error at offset={offset}: {e}")
+                break
+            ids = batch.get('ids', []) if isinstance(batch, dict) else []
+            documents = batch.get('documents', []) or []
+            metadatas = batch.get('metadatas', []) or []
+            if not ids:
+                break
+            for i, _id in enumerate(ids):
+                meta = metadatas[i] if i < len(metadatas) else {}
+                doc = documents[i] if i < len(documents) else ''
+                short_doc = (doc[:80] + '...') if doc and len(doc) > 80 else doc
+                # 按 key 排序后的 meta 输出（保持中文 / 非 ASCII 字符）
+                if not isinstance(meta, dict):
+                    meta_sorted_str = str(meta)
+                else:
+                    # 使用 k=v 形式更紧凑，按 key 排序
+                    parts = [f"{k}={repr(meta[k])}" for k in sorted(meta.keys())]
+                    meta_sorted_str = '{' + ', '.join(parts) + '}'
+                print(f"- {name} #{offset + i} id={_id} meta={meta_sorted_str} doc={short_doc}")
+            offset += len(ids)
+    print("\n[PRINT_ALL] done")
+
+# 新增: 按给定 id 在所有集合中删除匹配的文档
+# 目标: 删除 id = "88171217-db91-49fa-8034-773078563013" (可通过环境变量覆盖)
+# 用法: pytest backend\db\test_dbms.py::test_delete_from_any_collection -s
+# 可设置环境变量 TARGET_ID 指定其他 id
+
+def test_delete_from_any_collection():
+    target_ids = ["2a3410e3-e807-4c06-9c01-eed8627a276a","b0af6c40-8582-48cd-bb96-52eab33c4161","b6355969-b32b-44a1-8b0a-0b56eefb52e6"]
+    collections = client.list_collections()
+    found_any = False
+    for target_id in target_ids:
+        print(f"[DELETE_ANY] target_id={target_id}")
+        for col in collections:
+            name = getattr(col, 'name', None) or getattr(col, 'id', 'unknown')
+            try:
+                sc = client.get_collection(name)
+            except Exception as e:
+                print(f"[DELETE_ANY] skip collection={name} (cannot get: {e})")
+                continue
+            try:
+                batch = sc.get(ids=[target_id], include=['metadatas'])
+            except Exception as e:
+                print(f"[DELETE_ANY] collection={name} get error: {e}")
+                continue
+            ids = batch.get('ids', []) if isinstance(batch, dict) else []
+            if ids:
+                try:
+                    sc.delete(ids=[target_id])
+                    print(f"[DELETE_ANY] deleted id={target_id} from collection={name}")
+                    found_any = True
+                except Exception as e:
+                    print(f"[DELETE_ANY] failed delete id={target_id} from collection={name}: {e}")
+            else:
+                print(f"[DELETE_ANY] not found in collection={name}")
+        if not found_any:
+            print("[DELETE_ANY] target id not present in any collection")
+
+# 新增: 按名称删除集合 (使用环境变量 TARGET_COLLECTION 覆盖)
+# 用法:
+#   1) 删除默认 info 集合: pytest backend\db\test_dbms.py::test_delete_collection_by_name -s
+#   2) 指定集合: set TARGET_COLLECTION=stocks && pytest backend\db\test_dbms.py::test_delete_collection_by_name -s
+#   3) 使用 PowerShell: $env:TARGET_COLLECTION='stocks'; pytest backend/db/test_dbms.py::test_delete_collection_by_name -s
+
+def test_delete_collection_by_name():
+    target = "conclusion"
+    if not target:
+        print("[DELETE_COLLECTION] empty target name")
+        return
+    try:
+        client.delete_collection(target)
+        print(f"[DELETE_COLLECTION] deleted collection={target}")
+    except Exception as e:
+        print(f"[DELETE_COLLECTION] failed collection={target}: {e}")
+
+# 新增: 批量插入 09:30-09:45 open 平均值数据 (含端点)
+# 数据来源：
+#  sz002594 09:30:00-09:45:00 open 均值 (含端点):
+#    20250917: 108.5347
+#    20250918: 110.9253
+#    20250919: 109.5453
+#    20250923: 107.1540
+#    20250925: 105.3440
+# 说明：
+#  - 采用固定 ID 格式: sz002594_<date>_open15m
+#  - metadata 中保留 window 方便区分
+#  - value 统一保留 4 位小数（字符串形式，保持与现有样例一致）
+# 运行方式：pytest backend\db\test_dbms.py::test_insert_branch_data -s
+
+def test_insert_branch_data():
+    # 改为写入收盘价 close 数据
+    sc = client.get_or_create_collection("info")
+    stock_id = "sz002594"
+    # 新数据（日期 -> close 价格，4 位小数）
+    records = [
+        {"date": "20250925", "close": 107.50},
+    ]
+
+    for r in records:
+        rid = f"{stock_id}_{r['date']}_close"
+        metadata = {
+            "attached_stock_id": stock_id,
+            "datetime": r["date"],
+            "type": "close",
+            "value": r['close'],
+        }
+        sc.upsert(
+            ids=[rid],
+            documents=[""],  # 文档为空占位
+            metadatas=[metadata]
+        )
+        print(f"[INSERT] {rid} -> {metadata}")
+    print("[INSERT] done (close prices)")
+
+def test_evaluate_conclusions():
+    """
+    评估 conclusions 中的 高开/低开 预测是否与 实际 (开盘15分钟均价 vs 前一交易日收盘) 的差值方向一致。
+
+    规则:
+      - 获取 conclusions 中每条记录 (prediction in {高开, 低开, 平价})
+      - 对应日期 D:
+          open15 = info 中 type=open_15m_avg 且 datetime=D 的 value
+          prev_close = info 中所有 type=close 且 datetime < D 的日期里最近的一天的 value
+      - diff = open15 - prev_close
+      - 判断:
+          高开: diff > 0 -> 命中
+          低开: diff < 0 -> 命中
+          平价: 统一输出 预测无效 (不纳入命中统计)
+      - 缺数据则标记 数据缺失
+    输出示例:
+      20250919 预测 低开(85%) ，当天开盘15分钟均价 109.54，前一交易日(20250918)收盘价 109.71，预测命中，预测依据：<结论文本>
+    """
+    tolerance = 0.01  # 当前未用于平价判断（平价直接标记预测无效）
+    stock_id = "sz002594"
+
+    try:
+        concl_sc = client.get_or_create_collection("conclusions")
+        info_sc = client.get_or_create_collection("info")
+    except Exception as e:
+        print(f"[EVAL] 获取集合失败: {e}")
+        return
+
+    try:
+        concl_batch = concl_sc.get(limit=2000, include=["metadatas", "documents"]) or {}
+    except Exception as e:
+        print(f"[EVAL] 获取结论数据失败: {e}")
+        return
+
+    concl_metas = concl_batch.get("metadatas", []) or []
+    concl_docs = concl_batch.get("documents", []) or []
+    concl_ids = concl_batch.get("ids", []) or []
+
+    # 组装带文档的结论条目
+    concl_items = []
+    for i, meta in enumerate(concl_metas):
+        if not isinstance(meta, dict):
+            continue
+        if meta.get("stock") != stock_id:
+            continue
+        if not meta.get("prediction") or not meta.get("datetime"):
+            continue
+        doc = concl_docs[i] if i < len(concl_docs) else ""
+        concl_items.append({
+            "meta": meta,
+            "doc": doc,
+            "id": concl_ids[i] if i < len(concl_ids) else None
+        })
+
+    # info 数据
+    open15_map = {}
+    close_map = {}
+    try:
+        info_batch = info_sc.get(limit=10000, include=["metadatas"]) or {}
+    except Exception as e:
+        print(f"[EVAL] 获取 info 数据失败: {e}")
+        return
+
+    info_metas = info_batch.get("metadatas", []) or []
+    for m in info_metas:
+        if not isinstance(m, dict):
+            continue
+        dt = m.get("datetime")
+        t = m.get("type")
+        if not dt or not t:
+            continue
+        val_raw = m.get("value")
+        try:
+            val = float(val_raw)
+        except (TypeError, ValueError):
+            continue
+        if t == "open_15m_avg":
+            open15_map[dt] = val
+        elif t == "close":
+            close_map[dt] = val
+
+    # 所有出现过的交易日
+    trading_dates_sorted = sorted(set(open15_map.keys()) | set(close_map.keys()))
+
+    def find_prev_trading_date(date_str: str):
+        prev = None
+        for d in trading_dates_sorted:
+            if d < date_str:
+                prev = d
+            elif d >= date_str:
+                break
+        return prev
+
+    def find_prev_close(date_str: str):
+        prev_trading = find_prev_trading_date(date_str)
+        if not prev_trading:
+            return None, None
+        return prev_trading, close_map.get(prev_trading)
+
+    print("[EVAL] 预测评估结果:")
+    for item in sorted(concl_items, key=lambda x: x["meta"].get("datetime")):
+        meta = item["meta"]
+        doc = (item.get("doc") or "").strip()
+        d = meta.get("datetime")
+        pred = meta.get("prediction")
+        confidence = meta.get("confidence")
+        # 格式化信心百分比
+        if isinstance(confidence, (int, float)):
+            conf_str = f"{round(confidence * 100)}%"
+        else:
+            conf_str = "--"
+
+        open15 = open15_map.get(d)
+        prev_date, prev_close = find_prev_close(d)
+
+        if pred == "平价":
+            status = "预测无效"
+        else:
+            if open15 is None or prev_date is None or prev_close is None:
+                if prev_date is None:
+                    status = "数据缺失(无上一交易日)"
+                elif prev_close is None:
+                    status = f"数据缺失(上一交易日{prev_date}无close)"
+                else:
+                    status = "数据缺失"
+            else:
+                diff = open15 - prev_close
+                if pred == "高开":
+                    status = "预测命中" if diff > 0 else "预测未命中"
+                elif pred == "低开":
+                    status = "预测命中" if diff < 0 else "预测未命中"
+                else:
+                    status = f"不支持的预测类型:{pred}"
+
+        open15_txt = f"{open15:.2f}" if open15 is not None else "NA"
+        prev_close_txt = f"{prev_close:.2f}" if prev_close is not None else "NA"
+        prev_date_txt = prev_date if prev_date is not None else "NA"
+
+        rationale = f"，预测依据：{doc}" if doc else ""
+        print(f"{d} 预测 {pred}({conf_str}) ，当天开盘15分钟均价 {open15_txt}，前一交易日({prev_date_txt})收盘价 {prev_close_txt}，{status}{rationale}")

@@ -3,12 +3,9 @@ import asyncio
 from dateutil.parser import parse
 
 import akshare as ak
-from backend.common.utils import bj_time
+from backend.common.utils import bj_time, remove_letter_prefix
 import re
 import pandas as pd
-
-def remove_letter_prefix(s):
-    return re.sub(r'^[A-Za-z]+', '', s)
 
 class AKSApi:
     def __init__(self, stock_id, call_back):

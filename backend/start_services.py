@@ -45,7 +45,8 @@ if __name__ == "__main__":
         ('api_main.py', str(script_dir / 'api')),
         ('infocollector.py', str(script_dir / 'mcp/servers')),
         ('signalpredictor.py', str(script_dir / 'mcp/servers')),
-        ('orchestrate.py', str(script_dir / 'mcp')),
+        ('trader.py',str(script_dir / 'mcp/servers')),
+        #('orchestrate.py', str(script_dir / 'mcp')),
     ]
 
     # 设置信号处理函数

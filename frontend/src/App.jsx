@@ -52,13 +52,9 @@ export default function SignallyApp() {
     return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
   };
 
-  const getDaysInMonth = (date) => {
-    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  };
-
-  const getFirstDayOfMonth = (date) => {
-    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-  };
+  // --- Calendar helpers (fixed) ---
+  const getDaysInMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  const getFirstWeekdayOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay(); // 0=Sun
 
   const navigateMonth = (direction) => {
     setCurrentDate(prev => {
@@ -70,20 +66,20 @@ export default function SignallyApp() {
 
   const renderCalendar = () => {
     const daysInMonth = getDaysInMonth(currentDate);
-    const firstDay = getFirstDayOfMonth(currentDate);
-    const days = [];
+    const firstWeekday = getFirstWeekdayOfMonth(currentDate);
+    const cells = [];
 
-    // Empty cells for days before the first day of the month
-    for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="h-10"></div>);
+    // leading empty cells
+    for (let i = 0; i < firstWeekday; i++) {
+      cells.push(<div key={`empty-${i}`} className="h-10" />);
     }
 
-    // Days of the month
+    // days
     for (let day = 1; day <= daysInMonth; day++) {
       let dayClass = "h-10 flex items-center justify-center text-sm font-medium rounded";
       let bgClass = "";
 
-      // Special styling for specific dates based on the image
+      // Sample styling rules (adjust as needed)
       if (day === 9) bgClass = "bg-green-500 text-white";
       else if (day === 10) bgClass = "bg-red-500 text-white";
       else if (day === 11) bgClass = "bg-green-500 text-white";
@@ -91,14 +87,14 @@ export default function SignallyApp() {
       else if (day === 22) bgClass = "bg-gray-800 text-white";
       else dayClass += " text-gray-700";
 
-      days.push(
+      cells.push(
         <div key={day} className={`${dayClass} ${bgClass}`}>
           {day}
         </div>
       );
     }
 
-    return days;
+    return cells;
   };
 
   // helper to find selected stock object

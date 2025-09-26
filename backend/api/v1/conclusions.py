@@ -42,13 +42,15 @@ async def get_stock_predictions(stock: str, date: str):
         # 获取conclusions集合
         collection = ChromaDBSingleton().get_collection("conclusions")
 
+        conds = [{"stock": {"$eq": stock}}]
+        if date != "all":
+            conds.append({"datetime": {"$eq": date}})
+        else:
+            conds.append({"datetime": {"$ne": "19001010"}})
         # 查询指定股票和日期的所有记录
         results = collection.get(
             where={
-                "$and": [
-                    {"stock": {"$eq": stock}},
-                    {"datetime": {"$eq": date}}
-                ]
+                "$and": conds
             },
             include=["documents", "metadatas"]
         )
