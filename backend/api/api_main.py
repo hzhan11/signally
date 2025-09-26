@@ -3,12 +3,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.deps import ChromaDBSingleton
-from backend.api.v1 import stocks, info, conclusions
+from backend.api.v1 import stocks, info, conclusions, highlights
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 import uvicorn
 
 from backend.common import logger_client, sconfig
+from backend.common.utils import bj_time
+
 
 # -----------------------------
 # Lifespan with logging init
@@ -38,11 +40,16 @@ app.add_middleware(
 app.include_router(stocks.router, prefix="/api/v1/stocks", tags=["stocks"])
 app.include_router(info.router, prefix="/api/v1/info", tags=["info"])
 app.include_router(conclusions.router, prefix="/api/v1/conclusions", tags=["conclusions"])
+app.include_router(highlights.router, prefix="/api/v1/highlights", tags=["highlights"])
 
 # health check
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/time")
+def health():
+    return {"value": bj_time(0)}
 
 # -----------------------------
 # 启动 FastAPI (uvicorn)
@@ -50,8 +57,8 @@ def health():
 if __name__ == "__main__":
     # 可以直接用 Python 启动： python main.py
     uvicorn.run(
-        "api_main:app",  # 模块名:对象名
-        host="127.0.0.1",
+        "api_main:app",
+        host="0.0.0.0",  # changed from 127.0.0.1 to expose on all interfaces
         port=sconfig.settings.API_PORT,
         log_level="info",
         reload=True  # 开发模式自动热重载，可选

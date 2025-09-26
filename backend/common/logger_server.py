@@ -108,7 +108,7 @@ class LogRecordSocketReceiver(socketserver.ThreadingTCPServer):
 
 def run_log_server():
     root = logging.getLogger()
-    root.setLevel(logging.INFO)
+    root.setLevel(logging.DEBUG)
 
     # 控制台输出
     console_handler = logging.StreamHandler()
