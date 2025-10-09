@@ -1,10 +1,16 @@
 import datetime
+import logging
 import uuid
 import os
 import json
+from typing import Dict, List, Any, Union
 
 import pytest
 from fastapi import HTTPException
+
+from backend.api.deps import ChromaDBSingleton
+from backend.api.v1.highlights import GenerateHighlightsResponse, HighlightItem, _find_prev_trading_date, \
+    SUPPORTED_PREDICTIONS, _build_price_maps
 
 # 禁用ChromaDB的遥测功能
 os.environ['ANONYMIZED_TELEMETRY'] = 'False'
@@ -82,7 +88,7 @@ def test_add_stock_price_info_data():
     sc = client.get_or_create_collection("info")
 
     info_data = [
-        {"id":"77fae6d2-64ca-4a9c-b7f4-0af8d0912a8e", "datetime":"20250926", "content":""},
+        {"id":"71fae6d1-64ca-4a9c-b7f4-0af8d0912a8e", "datetime":"20250930", "content":""},
     ]
 
     for one in info_data:
@@ -91,7 +97,7 @@ def test_add_stock_price_info_data():
             "attached_stock_id": "sz002594",
             "datetime": one["datetime"],
             "type": "close",
-            "value": "107.29"
+            "value": "109.21"
         }
 
         sc.upsert(
@@ -156,6 +162,109 @@ def test_print_all():
 # 目标: 删除 id = "88171217-db91-49fa-8034-773078563013" (可通过环境变量覆盖)
 # 用法: pytest backend\db\test_dbms.py::test_delete_from_any_collection -s
 # 可设置环境变量 TARGET_ID 指定其他 id
+
+def test_generate_highlights():
+    """生成 / 更新所有 active 股票的 highlights (无请求体)。"""
+    db = ChromaDBSingleton()
+
+    concl_sc = db.get_collection("conclusions")
+    info_sc = db.get_collection("info")
+    hl_sc = db.get_collection("highlights")
+    stocks_sc = db.get_collection("stocks")
+
+    stocks_results = stocks_sc.get(include=["metadatas"]) or {}
+    stock_ids = stocks_results.get("ids", []) or []
+    stock_metas = stocks_results.get("metadatas", []) or []
+    active_stocks = {sid for i, sid in enumerate(stock_ids) if isinstance(stock_metas[i], dict) and stock_metas[i].get("status") == "active"}
+    print(f"[highlights.generate] active_stocks={list(active_stocks)}")
+
+    concl_results = concl_sc.get(include=["metadatas", "documents"]) or {}
+    concl_metas = concl_results.get("metadatas", []) or []
+    concl_docs = concl_results.get("documents", []) or []
+    if not concl_metas:
+        raise HTTPException(status_code=404, detail="No conclusions found")
+
+    concl_stocks = {m.get("stock") for m in concl_metas if isinstance(m, dict) and m.get("stock")}
+    target_stocks = sorted(concl_stocks & active_stocks)
+    print(f"[highlights.generate] target_stocks={target_stocks}")
+
+    info_results = info_sc.get(include=["metadatas"]) or {}
+
+    existing_hl = hl_sc.get(include=["metadatas"]) or {}
+    ex_ids = existing_hl.get("ids", []) or []
+    ex_metas = existing_hl.get("metadatas", []) or []
+    existing_index: Dict[str, Dict[str, str]] = {}
+    for i, mid in enumerate(ex_ids):
+        meta = ex_metas[i] if i < len(ex_metas) else {}
+        if not isinstance(meta, dict):
+            continue
+        sid = meta.get("stock_id")
+        dt = meta.get("datetime")
+        if not sid or not dt:
+            continue
+        existing_index.setdefault(sid, {})[dt] = mid
+
+    responses: List[GenerateHighlightsResponse] = []
+
+    for stock_id in target_stocks:
+        open15_map, close_map = _build_price_maps(info_results, stock_id)
+        trading_dates_sorted = sorted(set(open15_map.keys()) | set(close_map.keys()))
+        print(f"[highlights.generate] stock={stock_id} trading_dates={trading_dates_sorted}")
+
+        per_date: Dict[str, Dict[str, Any]] = {}
+        for i, meta in enumerate(concl_metas):
+            if not isinstance(meta, dict) or meta.get("stock") != stock_id:
+                continue
+            pred = meta.get("prediction")
+            if pred not in SUPPORTED_PREDICTIONS:
+                continue
+            dt = meta.get("datetime")
+            if not dt:
+                continue
+            conf_raw = meta.get("confidence")
+            try:
+                conf_val = float(conf_raw) if conf_raw is not None else 0.0
+            except (TypeError, ValueError):
+                conf_val = 0.0
+            prev = per_date.get(dt)
+            if (prev is None) or (conf_val > prev.get("_conf", -1)):
+                per_date[dt] = {"prediction": pred, "confidence": conf_raw, "doc": concl_docs[i] if i < len(concl_docs) else "", "_conf": conf_val}
+        print(f"[highlights.generate] stock={stock_id} selected_dates={list(per_date.keys())}")
+
+        items: List[HighlightItem] = []
+        stock_existing_dates = existing_index.get(stock_id, {})
+
+        for dt, data in sorted(per_date.items()):
+            prediction = data["prediction"]
+            confidence = data["confidence"]
+            doc = (data.get("doc") or "").strip()
+            open15 = open15_map.get(dt)
+            prev_date = _find_prev_trading_date(trading_dates_sorted, dt)
+            prev_close = close_map.get(prev_date) if prev_date else None
+            have_prices = (open15 is not None) and (prev_close is not None)
+            diff_val = (open15 - prev_close) if have_prices else -1.0
+            if have_prices:
+                hit: Union[bool, str, None] = (diff_val > 0) if prediction == "高开" else (diff_val < 0)
+            else:
+                hit = "unavailable"
+            open_val_out = open15 if open15 is not None else -1.0
+            prev_close_out = prev_close if prev_close is not None else -1.0
+            highlight_id = stock_existing_dates.get(dt) or f"{stock_id}_{dt}_highlight"
+            metadata = {"stock_id": stock_id, "datetime": dt, "last_close_price": prev_close_out, "open_15min_price": open_val_out, "conclusion": prediction, "reason": doc, "hit": hit, "confidence": confidence if confidence is not None else -1.0, "diff": diff_val}
+            summary_parts = [dt, f"预测{prediction}"]
+            summary_parts.append(f"开盘15分均价 {open15:.2f}" if open15 is not None else "开盘15分均价 未得出")
+            if prev_close is not None and prev_date:
+                summary_parts.append(f"前一交易日({prev_date})收盘 {prev_close:.2f}")
+            else:
+                summary_parts.append("前一交易日收盘 未得出")
+            summary_parts.append("命中" if isinstance(hit, bool) and hit else ("未命中" if isinstance(hit, bool) else "数据不足"))
+            summary_text = "，".join(summary_parts)
+            hl_sc.upsert(ids=[highlight_id], metadatas=[metadata], documents=[summary_text])
+            print(f"[highlights.generate] upsert id={highlight_id} meta={metadata}")
+            items.append(HighlightItem(id=highlight_id, stock_id=stock_id, datetime=dt, hit=hit, last_close_price=prev_close_out, open_15min_price=open_val_out, conclusion=prediction, reason=doc, confidence=confidence if confidence is not None else -1.0, diff=diff_val))
+        responses.append(GenerateHighlightsResponse(stock_id=stock_id, generated=len(items), items=items))
+
+    print(f"[highlights.generate] finished responses_count={len(responses)}")
 
 def test_delete_from_any_collection():
     target_ids = ["2a3410e3-e807-4c06-9c01-eed8627a276a","b0af6c40-8582-48cd-bb96-52eab33c4161","b6355969-b32b-44a1-8b0a-0b56eefb52e6"]

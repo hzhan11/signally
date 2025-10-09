@@ -16,6 +16,7 @@ export default function SignallyApp() {
   // New state for clicked date highlight details
   const [selectedHighlightDate, setSelectedHighlightDate] = useState(null); // 'YYYYMMDD'
   const [expandedReasons, setExpandedReasons] = useState(new Set()); // store highlight ids with expanded reason
+  const [navView, setNavView] = useState('main'); // 'main' | 'about'
 
   // helper to normalize server time string to desired format
   const formatBeijingDisplay = (raw) => {
@@ -404,6 +405,34 @@ export default function SignallyApp() {
     );
   };
 
+  const AboutContent = () => (
+    <div className="px-5 py-4 text-sm text-gray-800 leading-relaxed space-y-4">
+      <h1 className="text-center text-lg font-semibold text-orange-600">关于心歌 · Signally 简介</h1>
+      <p>Signally 是一个围绕日内与短周期市场信号评估的轻量级展示与验证系统，目标是以极低摩擦让使用者快速获知：今天系统关注什么、结论是什么、过去命中率如何。它把“生成→展示→验证”串成闭环：最新预测快照突出当前判断；彩色日历以命中/未中/今日三色编码历史；日期点选即可下钻查看当日多条预测详情；顶部实时显示统一的北京时间，保证多端一致性。</p>
+      <p>前端采用 React + Vite + TailwindCSS，单页结构紧凑：Tab 切换标的；“总命中率”即时反馈整体可靠度；预测快照包含方向结论、置信度、命中回填、开盘 15 分钟均值与前收盘对比，以及精炼的预测依据。未激活标的给出“建设中”占位，支持按阶段逐步扩容。所有字号与间距经过统一收敛，使移动端阅读更聚焦。</p>
+      <p>后端使用 FastAPI 暴露 /time、/api/v1/stocks、/api/v1/highlights 等 REST 接口，并通过 CORS 全开放以支持前后端独立部署。多进程启动脚本整合了数据存储 (ChromaDB)、信息采集、信号预测、交易执行等潜在子服务，为未来丰富策略与数据来源预留了结构。ChromaDB 可承载向量化特征或语义检索，为引入新闻情绪、公告要素、LLM 解释打下基础。</p>
+      <p>系统的数据结构以最小必要字段（结论、置信度、价格基线、命中标记、理由文本、日期键）表达核心信息，有利于后续增加：更精细的命中分类（方向/幅度/时效）、多模型融合得分、风险异常提示、用户反馈闭环、策略回测可视化组件及多语言输出。前端动态推断后端地址（若非 localhost 自动绑定当前域名:8000），加上服务监听 0.0.0.0，方便局域网手机调试。</p>
+      <p>价值体现在三点：1）透明：任何一条预测都被时间戳与命中结果固化，可回顾、可审计；2）轻量：不强制复杂的账户、工作流，即开即看；3）可扩展：松耦合接口 + 语义/向量层预留，使“加一个数据源或策略”保持低成本。未来将探索：理由自动摘要、多层置信度拆解、实时异常波动提醒、细粒度结果标签、以及人机协同迭代。</p>
+      <p>总体而言，Signally 已形成一个清晰、紧凑、可演进的“预测洞察面板”，为快速试错和策略迭代提供持续反馈底座。欢迎提出想法或加入共建。</p>
+      <div className="pt-2 text-center">
+        <button onClick={() => setNavView('main')} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm">返回主页</button>
+      </div>
+    </div>
+  );
+
+  const ContactContent = () => (
+    <div className="px-6 py-8 text-center text-sm text-gray-800 space-y-4">
+      <h1 className="text-lg font-semibold text-orange-600">联系作者</h1>
+      <div className="inline-block bg-orange-50 border border-orange-200 rounded px-6 py-4 text-left shadow-sm">
+        <p className="font-medium">QQ: <span className="font-mono">22321262</span></p>
+      </div>
+      <div>
+        <button onClick={() => setNavView('main')} className="mt-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm">返回主页</button>
+      </div>
+    </div>
+  );
+
+  // Conditional rendering based on navView state
   return (
     <div className="min-h-screen bg-gray-50 flex justify-center">
       <div className="w-full max-w-md bg-white shadow-lg">
@@ -421,13 +450,20 @@ export default function SignallyApp() {
         {/* Navigation */}
         <div className="bg-orange-50 px-4 py-3 border-b flex justify-between items-center">
           <div className="flex gap-6 text-sm">
-            <span className="text-orange-600 font-medium">关于心歌</span>
-            <span className="text-orange-600">加入社区</span>
-            <span className="text-orange-600">联系作者</span>
+            <button onClick={() => setNavView('about')} className={`text-orange-600 font-medium hover:underline ${navView==='about'?'underline':''}`}>关于心歌</button>
+            <button onClick={() => window.open('https://github.com/hzhan11/signally','_blank','noopener,noreferrer')} className="text-orange-600 hover:underline">获取源码</button>
+            <button onClick={() => setNavView('contact')} className={`text-orange-600 hover:underline ${navView==='contact'?'underline':''}`}>联系作者</button>
           </div>
           <div className="text-orange-600 text-sm ml-auto">版本: v1.03</div>
         </div>
         <div className="h-6" />
+        {/* Conditional Main vs About */}
+        {navView === 'about' ? (
+          <div className="pb-8">{AboutContent()}</div>
+        ) : navView === 'contact' ? (
+          <div className="pb-8">{ContactContent()}</div>
+        ) : (
+        <>
         {/* Tabs */}
         <div className="px-4 py-2">
           <div className="flex items-center justify-between gap-3">
@@ -468,7 +504,7 @@ export default function SignallyApp() {
           <div className="px-4 pb-2">
             <div className="bg-orange-500 rounded-t px-4 py-2 flex items-center justify-between text-white">
               <button onClick={() => navigateMonth(-1)} className="p-1 hover:bg-orange-600 rounded"><ChevronLeft className="w-4 h-4" /></button>
-              <span className="font-semibold text-sm">预测日历</span>
+              <span className="font-semibold text-sm">{`${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')} 预计日历`}</span>
               <button onClick={() => navigateMonth(1)} className="p-1 hover:bg-orange-600 rounded"><ChevronRight className="w-4 h-4" /></button>
             </div>
             <div className="bg-orange-100 px-4 py-2">
@@ -481,6 +517,8 @@ export default function SignallyApp() {
         )}
         {/* Highlights Table (if a colored date selected) */}
         {renderHighlightsTable()}
+        </>
+        )}
         {/* Footer */}
         <div className="mt-6 px-4 pb-6 text-center text-[11px] text-gray-400 border-t border-orange-100 pt-4">
           © 2025 Signally · All Rights Reserved

@@ -91,6 +91,7 @@ class SinaFinSearcher:
                 logging.error(ex)
             finally:
                 continue
+        self.driver.quit()
         return {"result":"ok"}
 
 

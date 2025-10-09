@@ -135,6 +135,11 @@ class Orchestrate:
             logging.info(f"final conclusion is {tmp}")
             self.conclusion(stock, json.loads(tmp))
 
+    def update_cache(self):
+        url = f"http://localhost:{sconfig.settings.API_PORT}/api/v1/highlights/generate"
+        resp = httpx.get(url, timeout=30.0)
+        logging.info(f"{resp}")
+
     async def go_with_info_collector(self, stock):
         await wait_till("08:45:00", self.info_col_progress_handler)
         logging.info("start to collect news and info...")
@@ -147,13 +152,34 @@ class Orchestrate:
         self.final(stock)
 
     async def run(self):
-        for stock in self.get_stock_list():
-            if "status" in stock["metadata"].keys() and stock["metadata"]["status"] == "active":
-                await self.go_with_info_collector(stock)
-        for stock in self.get_stock_list():
-            if "status" in stock["metadata"].keys() and stock["metadata"]["status"] == "active":
-                async with self.trader_client:
-                    result = await self.trader_client.call_tool("trade",{"stock": stock})
+
+        while True:
+
+            try:
+                async with self.info_col_client:
+                    while True:
+                        result = await self.info_col_client.call_tool("opening")
+                        is_open = result.data["result"]
+                        if is_open:
+                            break
+                        else:
+                            logging.info("today is close, wait for 24hrs to check again...")
+                            await sleep(3600 * 24)
+
+                for stock in self.get_stock_list():
+                    if "status" in stock["metadata"].keys() and stock["metadata"]["status"] == "active":
+                        await self.go_with_info_collector(stock)
+                for stock in self.get_stock_list():
+                    if "status" in stock["metadata"].keys() and stock["metadata"]["status"] == "active":
+                        async with self.trader_client:
+                            result = await self.trader_client.call_tool("trade",{"stock": stock})
+
+                self.update_cache()
+            except Exception as ex:
+                logging.error(str(ex))
+
+            await wait_till("23:59:59", self.info_col_progress_handler)
+            await sleep(120)
 
 if __name__ == "__main__":
     logger_client.init("orchestrate")

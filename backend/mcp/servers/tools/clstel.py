@@ -82,6 +82,7 @@ class ClsTelSearcher:
                 logging.error(ex)
             finally:
                 continue
+        self.driver.quit()
         return {"result":"ok"}
 
 async def call_back(index, total, mesg):

@@ -6,6 +6,7 @@ from fastmcp import FastMCP, Context
 from backend.common.sconfig import settings
 from backend.common.utils import bj_time
 from backend.mcp.servers.tools.aksapi import AKSApi
+from backend.mcp.servers.tools.marketopen import MarketOpening
 from backend.mcp.servers.tools.sina import SinaFinSearcher
 from backend.mcp.servers.tools.clstel import ClsTelSearcher
 from backend.mcp.servers.tools.yahoof import YahooFAPI
@@ -36,6 +37,14 @@ async def search(
     n = agent.lookahead()
     await agent.start()
     return {"processed": n, "result": "ok"}
+
+@mcp.tool
+async def opening(
+
+) -> dict:
+    mo = MarketOpening()
+    r = mo.isopen(bj_time(0).strftime("%Y-%m-%d"))
+    return {"result": r}
 
 logger_client.init("InfoCollector")
 mcp.run(transport="http", host="127.0.0.1", port=sconfig.settings.INFO_COL_PORT)
