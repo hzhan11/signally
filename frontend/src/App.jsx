@@ -17,6 +17,17 @@ export default function SignallyApp() {
   const [selectedHighlightDate, setSelectedHighlightDate] = useState(null); // 'YYYYMMDD'
   const [expandedReasons, setExpandedReasons] = useState(new Set()); // store highlight ids with expanded reason
   const [navView, setNavView] = useState('main'); // 'main' | 'about'
+  // NEW: system status & last message
+  const [systemStatus, setSystemStatus] = useState('--');
+  const [lastMessage, setLastMessage] = useState('');
+  const [dashboardError, setDashboardError] = useState(null);
+  // 动态任务动画 tick
+  const [statusTick, setStatusTick] = useState(0);
+  // 添加定时器让任务动画运行（之前遗漏导致不动）
+  useEffect(() => {
+    const id = setInterval(() => setStatusTick(t => (t + 1) % 3), 450);
+    return () => clearInterval(id);
+  }, []);
 
   // helper to normalize server time string to desired format
   const formatBeijingDisplay = (raw) => {
@@ -85,7 +96,8 @@ export default function SignallyApp() {
       return (
         <div className="mx-auto w-full">
           <div className="bg-white border border-orange-300 rounded shadow-sm overflow-hidden">
-            <div className="bg-orange-500 text-white px-3 py-2 text-sm font-semibold">{snapshotDateDisplay} 预测快照</div>
+            {/* 标题去掉粗体 */}
+            <div className="bg-orange-400 text-white px-3 py-2 text-sm">{snapshotDateDisplay} 预测快照</div>
             <div className="px-4 py-6 text-center text-sm text-gray-400">敬请期待...</div>
           </div>
         </div>
@@ -104,8 +116,8 @@ export default function SignallyApp() {
     return (
       <div className="mx-auto w-full">
         <div className="bg-white border border-orange-300 rounded shadow-sm overflow-hidden">
-          {/* 标题栏: 预测快照 */}
-          <div className="bg-orange-500 text-white px-3 py-2 text-sm font-semibold">
+          {/* 标题去掉粗体 */}
+          <div className="bg-orange-400 text-white px-3 py-2 text-sm">
             {snapshotDateDisplay} 预测快照
           </div>
           {/* 内容主体 */}
@@ -146,6 +158,74 @@ export default function SignallyApp() {
     );
   };
 
+  // NEW: render system status card (same style as snapshot card)
+  const renderSystemStatusCard = () => {
+    return (
+      <div className="mx-auto w-full">
+        <div className="bg-white border border-orange-300 rounded shadow-sm overflow-hidden">
+          {/* 标题去掉粗体 */}
+          <div className="bg-orange-400 text-white px-3 py-2 text-sm">智能体状态</div>
+          <div className="px-4 py-3 text-left text-sm space-y-3">
+            {dashboardError && (
+              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2 flex justify-between items-start gap-3">
+                <span className="whitespace-pre-wrap break-all">请求失败: {dashboardError}</span>
+                <button
+                  className="shrink-0 px-2 py-0.5 bg-red-600 text-white text-xs rounded hover:bg-red-500"
+                  onClick={() => {
+                    // manual quick retry (one-off) replicating core logic
+                    (async () => {
+                      try {
+                        const res = await fetch(`${API_BASE}/api/v1/highlights/dashboard`, { cache: 'no-store' });
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        const data = await res.json();
+                        const value = data?.value || data?.time;
+                        if (value) {
+                          setBeijingNow(value);
+                          const dp = value.split(' ')[0];
+                          if (!todayYMD) setTodayYMD(dp);
+                        }
+                        if (data?.system_status !== undefined && data.system_status !== null) setSystemStatus(String(data.system_status));
+                        const lm = data?.last_message;
+                        if (lm === undefined || lm === null || lm === '') setLastMessage(''); else setLastMessage(String(lm));
+                        setDashboardError(null);
+                      } catch (er) {
+                        setDashboardError(er.message || String(er));
+                      }
+                    })();
+                  }}
+                >重试</button>
+              </div>
+            )}
+            {/* 去掉“当前任务”标签与小圈圈，仅保留状态文本+跳动点 */}
+            {(() => {
+              const s = systemStatus || '';
+              const isActive = s && s !== '--' && !/(完成|结束|成功|idle|空闲)/i.test(s);
+              if (!s) return null;
+              return (
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-blue-600 break-all">{s}</span>
+                  {isActive && (
+                    <span className="inline-flex items-center gap-[3px] ml-1">
+                      <span className={`w-1.5 h-1.5 rounded-full bg-blue-500 transition-opacity ${statusTick===0?'opacity-100':'opacity-25'}`} />
+                      <span className={`w-1.5 h-1.5 rounded-full bg-blue-500 transition-opacity ${statusTick===1?'opacity-100':'opacity-25'}`} />
+                      <span className={`w-1.5 h-1.5 rounded-full bg-blue-500 transition-opacity ${statusTick===2?'opacity-100':'opacity-25'}`} />
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
+            {/* 去掉“最后日志”标签，仅展示内容（若有） */}
+            {lastMessage && (
+              <div className="text-xs sm:text-[13px] leading-relaxed text-gray-700 whitespace-pre-line break-words">
+                {lastMessage}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // 优先使用环境变量；否则如果不是本机域名，尝试用当前访问域名推断后端端口 8000
   const derivedHost = (() => {
     try {
@@ -160,45 +240,48 @@ export default function SignallyApp() {
   })();
   const API_BASE = import.meta.env.VITE_API_BASE || derivedHost;
 
-  // Fetch Beijing time from server /time (returns {"value": "YYYY-MM-DD HH:MM:SS"})
+  // Fetch aggregated dashboard data (time + system_status + last_message) every 30s
   useEffect(() => {
-    let mounted = true;
+    let active = true;
     let initialized = false;
-    async function fetchServerTime() {
+    const POLL_MS = 30000;
+    async function fetchDashboard() {
       try {
-        const res = await fetch(`${API_BASE}/time`, { cache: 'no-store' });
-        if (!res.ok) throw new Error('time api error');
+        const res = await fetch(`${API_BASE}/api/v1/highlights/dashboard`, { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
-        const value = data?.value; // expected Beijing local string
-        if (mounted) {
+        if (!active) return;
+        const value = data?.value || data?.time;
+        if (value) {
           setBeijingNow(value);
-          if (value) setTodayYMD(value.split(' ')[0]);
-          if (!initialized && value) {
-            // set calendar base date
-            const datePart = value.split(' ')[0]; // YYYY-MM-DD
+          const datePart = value.split(' ')[0];
+          if (!todayYMD) setTodayYMD(datePart);
+          if (!initialized) {
             const [y,m,d] = datePart.split('-').map(Number);
             if (y && m && d) setCurrentDate(new Date(y, m-1, d));
             initialized = true;
           }
         }
+        if (data?.system_status !== undefined && data.system_status !== null) setSystemStatus(String(data.system_status));
+        const lm = data?.last_message;
+        if (lm === undefined || lm === null || lm === '') setLastMessage(''); else setLastMessage(String(lm));
+        setDashboardError(null);
       } catch (e) {
-        if (mounted && beijingNow === null) {
-          // fallback to client Beijing guess
+        if (active && beijingNow === null) {
           const now = new Date();
-          const bj = new Date(now.getTime() + (8 * 60 + now.getTimezoneOffset()) * 60000);
-            const pad = n => String(n).padStart(2,'0');
-            const fallbackStr = `${bj.getFullYear()}-${pad(bj.getMonth()+1)}-${pad(bj.getDate())} ${pad(bj.getHours())}:${pad(bj.getMinutes())}:${pad(bj.getSeconds())}`;
-            setBeijingNow(fallbackStr);
-            setTodayYMD(`${bj.getFullYear()}-${pad(bj.getMonth()+1)}-${pad(bj.getDate())}`);
-            setCurrentDate(new Date(bj.getFullYear(), bj.getMonth(), bj.getDate()));
+            const bj = new Date(now.getTime() + (8 * 60 + now.getTimezoneOffset()) * 60000);
+          const pad = n => String(n).padStart(2,'0');
+          const fallbackStr = `${bj.getFullYear()}-${pad(bj.getMonth()+1)}-${pad(bj.getDate())} ${pad(bj.getHours())}:${pad(bj.getMinutes())}:${pad(bj.getSeconds())}`;
+          setBeijingNow(fallbackStr);
+          setTodayYMD(`${bj.getFullYear()}-${pad(bj.getMonth()+1)}-${pad(bj.getDate())}`);
+          setCurrentDate(new Date(bj.getFullYear(), bj.getMonth(), bj.getDate()));
         }
+        setDashboardError(e.message || String(e));
       }
     }
-    // initial fetch
-    fetchServerTime();
-    // periodic refresh every 5s (adjust if needed)
-    const id = setInterval(fetchServerTime, 5000);
-    return () => { mounted = false; clearInterval(id); };
+    fetchDashboard();
+    const id = setInterval(fetchDashboard, POLL_MS);
+    return () => { active = false; clearInterval(id); };
   }, [API_BASE]);
 
   // Fetch stocks (unchanged)
@@ -337,12 +420,12 @@ export default function SignallyApp() {
     return (
       <div className="px-4 pb-6">
         <div className="bg-white border border-orange-300 rounded shadow-sm overflow-hidden">
-          {/* 标题栏改为居中显示 */}
-          <div className="bg-orange-500 text-white px-3 py-2 text-sm font-semibold relative">
+          {/* 标题去掉粗体 */}
+          <div className="bg-orange-400 text-white px-3 py-2 text-sm relative">
             <div className="text-center">{formatHighlightDate(selectedHighlightDate)} 预测详情</div>
             <button
               onClick={() => setSelectedHighlightDate(null)}
-              className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded absolute right-3 top-1/2 -translate-y-1/2"
+              className="text-xs text-white hover:bg-white/20 px-2 py-1 rounded absolute right-3 top-1/2 -translate-y-1/2"
             >关闭</button>
           </div>
           <div className="divide-y divide-orange-100">
@@ -407,7 +490,7 @@ export default function SignallyApp() {
 
   const AboutContent = () => (
     <div className="px-5 py-4 text-sm text-gray-800 leading-relaxed space-y-4">
-      <h1 className="text-center text-lg font-semibold text-orange-600">关于心歌 · Signally 简介</h1>
+      <h1 className="text-center text-lg font-semibold text-orange-600">心歌 · Signally</h1>
       <p>Signally 是一个围绕日内与短周期市场信号评估的轻量级展示与验证系统，目标是以极低摩擦让使用者快速获知：今天系统关注什么、结论是什么、过去命中率如何。它把“生成→展示→验证”串成闭环：最新预测快照突出当前判断；彩色日历以命中/未中/今日三色编码历史；日期点选即可下钻查看当日多条预测详情；顶部实时显示统一的北京时间，保证多端一致性。</p>
       <p>前端采用 React + Vite + TailwindCSS，单页结构紧凑：Tab 切换标的；“总命中率”即时反馈整体可靠度；预测快照包含方向结论、置信度、命中回填、开盘 15 分钟均值与前收盘对比，以及精炼的预测依据。未激活标的给出“建设中”占位，支持按阶段逐步扩容。所有字号与间距经过统一收敛，使移动端阅读更聚焦。</p>
       <p>后端使用 FastAPI 暴露 /time、/api/v1/stocks、/api/v1/highlights 等 REST 接口，并通过 CORS 全开放以支持前后端独立部署。多进程启动脚本整合了数据存储 (ChromaDB)、信息采集、信号预测、交易执行等潜在子服务，为未来丰富策略与数据来源预留了结构。ChromaDB 可承载向量化特征或语义检索，为引入新闻情绪、公告要素、LLM 解释打下基础。</p>
@@ -454,7 +537,9 @@ export default function SignallyApp() {
             <button onClick={() => window.open('https://github.com/hzhan11/signally','_blank','noopener,noreferrer')} className="text-orange-600 hover:underline">获取源码</button>
             <button onClick={() => setNavView('contact')} className={`text-orange-600 hover:underline ${navView==='contact'?'underline':''}`}>联系作者</button>
           </div>
-          <div className="text-orange-600 text-sm ml-auto">版本: v1.03</div>
+          <div className="text-orange-600 text-sm ml-auto pl-2">
+            当前版本：1.0.2
+          </div>
         </div>
         <div className="h-6" />
         {/* Conditional Main vs About */}
@@ -489,12 +574,16 @@ export default function SignallyApp() {
         {/* Prediction / Latest Highlight */}
         {selectedStock && selectedStock.metadata && selectedStock.metadata.status === 'active' ? (
           <div className="px-4 py-4 text-center">
-            {renderLatestHighlightLine()}
+            <div className="space-y-4">
+              {renderSystemStatusCard()}
+              {renderLatestHighlightLine()}
+            </div>
           </div>
         ) : selectedStock && selectedStock.metadata && selectedStock.metadata.status !== 'active' ? (
           <div className="px-4 py-4">
             <div className="bg-white border border-orange-300 rounded shadow-sm overflow-hidden">
-              <div className="bg-orange-500 text-white px-3 py-2 text-sm font-semibold">提示</div>
+              {/* 提示卡片标题去掉粗体 */}
+              <div className="bg-orange-400 text-white px-3 py-2 text-sm">提示</div>
               <div className="px-4 py-6 text-center text-sm text-gray-500">建设中，敬请期待...</div>
             </div>
           </div>
@@ -502,10 +591,11 @@ export default function SignallyApp() {
         {/* Calendar */}
         {selectedStock && selectedStock.metadata && selectedStock.metadata.status === 'active' && (
           <div className="px-4 pb-2">
-            <div className="bg-orange-500 rounded-t px-4 py-2 flex items-center justify-between text-white">
-              <button onClick={() => navigateMonth(-1)} className="p-1 hover:bg-orange-600 rounded"><ChevronLeft className="w-4 h-4" /></button>
-              <span className="font-semibold text-sm">{`${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')} 预计日历`}</span>
-              <button onClick={() => navigateMonth(1)} className="p-1 hover:bg-orange-600 rounded"><ChevronRight className="w-4 h-4" /></button>
+            {/* 标题去掉粗体 (span 内去除 font-semibold) */}
+            <div className="bg-orange-400 rounded-t px-4 py-2 flex items-center justify-between text-white">
+              <button onClick={() => navigateMonth(-1)} className="p-1 hover:bg-orange-500 rounded"><ChevronLeft className="w-4 h-4" /></button>
+              <span className="text-sm">{`${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')} 预测日历`}</span>
+              <button onClick={() => navigateMonth(1)} className="p-1 hover:bg-orange-500 rounded"><ChevronRight className="w-4 h-4" /></button>
             </div>
             <div className="bg-orange-100 px-4 py-2">
               <div className="grid grid-cols-7 gap-1 text-center text-xs sm:text-[13px] font-medium text-gray-700"><div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div></div>

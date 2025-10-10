@@ -4,10 +4,14 @@ from typing import Optional, List, Dict, Any, Union
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from backend.api.deps import ChromaDBSingleton
+from backend.common.utils import bj_time
 
 router = APIRouter()
 
-SUPPORTED_PREDICTIONS = {"高开", "低开"}
+SUPPORTED_PREDICTIONS = {"高开", "低开", "平价"}
+
+system_status = "等待"
+last_message = ""
 
 class GenerateHighlightsRequest(BaseModel):
     stock_id: Optional[str] = Field(None, description="指定股票代码；为空则对所有在 conclusions 中出现的股票处理")
@@ -34,6 +38,12 @@ class HighlightsListResponse(BaseModel):
     stock_id: str
     total: int
     items: List[HighlightItem]
+
+class SystemStatusUpdate(BaseModel):
+    value: str = Field(..., description="新的系统状态")
+
+class LastMessageUpdate(BaseModel):
+    value: str = Field(..., description="新的最后消息内容")
 
 # -------------------------
 # Utility functions
@@ -216,3 +226,37 @@ async def list_highlights(stock_id: str):
     items.sort(key=lambda x: x.datetime or "", reverse=True)
     logging.info(f"[highlights.list] stock_id={stock_id} items={len(items)}")
     return HighlightsListResponse(stock_id=stock_id, total=len(items), items=items)
+
+# -------------------------
+# GET/POST: system_status (removed GET per request)
+# -------------------------
+@router.post("/system_status")
+async def set_system_status(payload: SystemStatusUpdate):
+    """设置 system_status"""
+    global system_status
+    system_status = payload.value
+    return {"system_status": system_status}
+
+# -------------------------
+# GET/POST: last_message (removed GET per request)
+# -------------------------
+@router.post("/last_message")
+async def set_last_message(payload: LastMessageUpdate):
+    """设置 last_message"""
+    global last_message
+    last_message = payload.value
+    return {"last_message": last_message}
+
+# -------------------------
+# GET: aggregated dashboard (time + system_status + last_message)
+# -------------------------
+@router.get("/dashboard")
+async def dashboard():
+    current = bj_time(0)
+    return {
+        "time": current,      # explicit named field
+        "value": current,     # backward compatibility with old /time shape
+        "system_status": system_status,
+        "last_message": last_message
+    }
+

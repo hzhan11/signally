@@ -9,7 +9,6 @@ from typing import AsyncGenerator
 import uvicorn
 
 from backend.common import logger_client, sconfig
-from backend.common.utils import bj_time
 
 
 # -----------------------------
@@ -46,10 +45,6 @@ app.include_router(highlights.router, prefix="/api/v1/highlights", tags=["highli
 @app.get("/health")
 def health():
     return {"status": "ok"}
-
-@app.get("/time")
-def health():
-    return {"value": bj_time(0)}
 
 # -----------------------------
 # 启动 FastAPI (uvicorn)

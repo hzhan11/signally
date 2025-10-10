@@ -47,9 +47,12 @@ class Orchestrate:
         params: SamplingParams,
         context: RequestContext
     ) -> str:
+
         conversation = ""
         for message in messages:
             conversation += message.content.text + "\n"
+
+        self.update_message(conversation)
 
         system_prompt = params.systemPrompt or "You are a helpful assistant."
 
@@ -103,6 +106,55 @@ class Orchestrate:
         self.sign_pred_client = Client(f"http://localhost:{sconfig.settings.SIGN_PRE_PORT}/mcp",sampling_handler=self.sign_pred_sampling_handler)
         self.trader_client = Client(f"http://localhost:{sconfig.settings.TRADER_PORT}/mcp", progress_handler=self.trader_progress_handler)
         self.memory = []
+        # cache last sent values to avoid spamming API
+        self._last_status: str | None = None
+        self._last_message: str | None = None
+
+    # -----------------------------
+    # 更新系统状态（去重 + 简单错误处理）
+    # -----------------------------
+    def update_status(self, status: str):
+        if not isinstance(status, str):
+            status = str(status)
+        if status == self._last_status:
+            return  # no change
+        url = f"http://localhost:{sconfig.settings.API_PORT}/api/v1/highlights/system_status"
+        try:
+            resp = httpx.post(url, json={"value": status}, timeout=5.0)
+            if resp.status_code >= 400:
+                logging.warning(f"update_status failed {resp.status_code}: {resp.text}")
+            else:
+                self._last_status = status
+                logging.info(f"[orchestrate] system_status -> {status}")
+        except Exception as e:
+            logging.error(f"update_status exception: {e}")
+
+    # -----------------------------
+    # 更新最后消息（去重长度截断 + 简单错误处理）
+    # -----------------------------
+    def update_message(self, msg: str):
+        if msg is None:
+            return
+        if not isinstance(msg, str):
+            msg = str(msg)
+        # 适度截断，避免超长（前端卡片显示）
+        MAX_LEN = 100
+        if len(msg) > MAX_LEN:
+            msg_to_send = msg[:MAX_LEN] + '…'
+        else:
+            msg_to_send = msg
+        if msg_to_send == self._last_message:
+            return
+        url = f"http://localhost:{sconfig.settings.API_PORT}/api/v1/highlights/last_message"
+        try:
+            resp = httpx.post(url, json={"value": msg_to_send}, timeout=5.0)
+            if resp.status_code >= 400:
+                logging.warning(f"update_message failed {resp.status_code}: {resp.text}")
+            else:
+                self._last_message = msg_to_send
+                logging.debug(f"[orchestrate] last_message updated length={len(msg_to_send)}")
+        except Exception as e:
+            logging.error(f"update_message exception: {e}")
 
     def get_stock_list(self):
         response = httpx.get(f"http://localhost:{sconfig.settings.API_PORT}/api/v1/stocks/list")
@@ -158,26 +210,31 @@ class Orchestrate:
             try:
                 async with self.info_col_client:
                     while True:
+                        self.update_status("判断开市情况")
                         result = await self.info_col_client.call_tool("opening")
                         is_open = result.data["result"]
                         if is_open:
                             break
                         else:
+                            self.update_status("休市")
                             logging.info("today is close, wait for 24hrs to check again...")
                             await sleep(3600 * 24)
 
+                self.update_status("查询金融新闻和股票交易数据")
                 for stock in self.get_stock_list():
                     if "status" in stock["metadata"].keys() and stock["metadata"]["status"] == "active":
                         await self.go_with_info_collector(stock)
+
+                self.update_status("股票交易信息监控")
                 for stock in self.get_stock_list():
                     if "status" in stock["metadata"].keys() and stock["metadata"]["status"] == "active":
                         async with self.trader_client:
                             result = await self.trader_client.call_tool("trade",{"stock": stock})
-
                 self.update_cache()
             except Exception as ex:
                 logging.error(str(ex))
 
+            self.update_status("等待盘后整理")
             await wait_till("23:59:59", self.info_col_progress_handler)
             await sleep(120)
 

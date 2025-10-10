@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from selenium import webdriver
@@ -8,6 +9,8 @@ import time
 from pathlib import Path
 from dateutil.parser import parse
 from backend.common import logger_client, sconfig
+from backend.common.utils import bj_time
+
 
 def find_first_less_than(time_array, target_time):
     for i, time_str in enumerate(time_array):
@@ -95,9 +98,11 @@ class SinaFinSearcher:
         return {"result":"ok"}
 
 
+def reporter(i,total,mesg):
+    print(mesg)
 
 if __name__ == "__main__":
-    sf = SinaFinSearcher("sz002594", parse("2025-09-15 09:21:24"),None)
+    sf = SinaFinSearcher("sz002594", bj_time(offset=12), reporter)
     n = sf.lookahead()
     print(n)
-    sf.start()
+    asyncio.run(sf.start())
