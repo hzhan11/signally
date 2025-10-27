@@ -60,6 +60,10 @@ class ClsTelSearcher:
             By.XPATH, "//span[@class='c-34304b']/div"
         )
 
+        self.times = self.driver.find_elements(
+            By.XPATH, "//span[@class='f-l l-h-136363 f-w-b c-de0422 m-r-10 telegraph-time-box']"
+        )
+
         logging.info(f"about {len(self.eles)} related news found")
         if sconfig.settings.MODE == "debug":
             return 1
@@ -72,17 +76,23 @@ class ClsTelSearcher:
         else:
             length = len(self.eles)
         batch = ""
-        for i in range(length):
-            try:
-                batch += f"###快讯\n{self.eles[i].text}\n"
-                if i % 10 == 9 or i == length-1:
-                    await self.call_back_fun(i+1, length, batch)
-                    batch = ""
-            except Exception as ex:
-                logging.error(ex)
-            finally:
-                continue
-        self.driver.quit()
+
+        try:
+            for i in range(length):
+                try:
+                    t = self.times[i].text
+                    content = self.eles[i].text
+                    content = content.replace("日电",f"日{t}电")
+                    batch += f"###快讯\n{content}\n\n"
+                    if i % 10 == 9 or i == length-1:
+                        await self.call_back_fun(i+1, length, batch)
+                        batch = ""
+                except Exception as ex:
+                    logging.error(ex)
+                finally:
+                    continue
+        finally:
+            self.driver.quit()
         return {"result":"ok"}
 
 async def call_back(index, total, mesg):
@@ -90,7 +100,7 @@ async def call_back(index, total, mesg):
     print(mesg)
 
 async def main():
-    sf = ClsTelSearcher(None, None, call_back)
+    sf = ClsTelSearcher(call_back)
     n = sf.lookahead()
     print(n)
     await sf.start()

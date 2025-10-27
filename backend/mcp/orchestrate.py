@@ -37,7 +37,7 @@ class Orchestrate:
             return
 
         async with self.sign_pred_client:
-            result = await self.sign_pred_client.call_tool("predict", {"news": message})
+            result = await self.sign_pred_client.call_tool("predict", {"news": message, "stock": self._current_stock})
             logging.info(f"{result}")
             self.memory.append(result.data)
 
@@ -109,6 +109,7 @@ class Orchestrate:
         # cache last sent values to avoid spamming API
         self._last_status: str | None = None
         self._last_message: str | None = None
+        self._current_stock = None
 
     # -----------------------------
     # 更新系统状态（去重 + 简单错误处理）
@@ -223,6 +224,7 @@ class Orchestrate:
                 self.update_status("查询金融新闻和股票交易数据")
                 for stock in self.get_stock_list():
                     if "status" in stock["metadata"].keys() and stock["metadata"]["status"] == "active":
+                        self._current_stock = stock
                         await self.go_with_info_collector(stock)
 
                 self.update_status("股票交易信息监控")
@@ -230,7 +232,9 @@ class Orchestrate:
                     if "status" in stock["metadata"].keys() and stock["metadata"]["status"] == "active":
                         async with self.trader_client:
                             result = await self.trader_client.call_tool("trade",{"stock": stock})
+
                 self.update_cache()
+
             except Exception as ex:
                 logging.error(str(ex))
 

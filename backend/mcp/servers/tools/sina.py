@@ -88,7 +88,7 @@ class SinaFinSearcher:
                 ele = self.driver.find_element(
                     By.XPATH, '//div[@id="news-text"]'
                 )
-                md = f"###标题\n{self.whole_titles[i]}\n###链接\n{self.whole_urls[i]}\n###时间\n{self.whole_times[i]}\n###正文\n{ele.text}\n"
+                md = f"###新闻标题\n{self.whole_titles[i]}\n###新闻链接\n{self.whole_urls[i]}\n###新闻时间\n{self.whole_times[i]}\n###新闻正文\n{ele.text}\n"
                 await self.call_back_fun(i+1, len(self.whole_urls), md)
             except Exception as ex:
                 logging.error(ex)

@@ -5,7 +5,7 @@ from backend.api.deps import ChromaDBSingleton
 
 router = APIRouter()
 
-class Open15MAvgRequest(BaseModel):
+class RequestDataType(BaseModel):
     stock_id: str = ""
     formatted_date: str = "19800101"
     value: float
@@ -14,7 +14,7 @@ class Open15MAvgRequest(BaseModel):
 
 @router.post("/list/")
 async def get_info(
-    data: Open15MAvgRequest
+    data: RequestDataType
 ):
     stock = data.stock_id
     datetime = data.formatted_date
@@ -38,7 +38,7 @@ async def get_info(
         if not results or not results.get('ids'):
             raise HTTPException(
                 status_code=404,
-                detail=f"未找到股票 {stock} 在 {datetime} 的15分钟开盘平均价数据"
+                detail=f"未找到股票 {stock} 在 {datetime} 的 {itype} 数据"
             )
 
         # 格式化返回单条结果
@@ -50,7 +50,7 @@ async def get_info(
                 "id": results['ids'][0],
                 "stock_id": stock.lower(),
                 "datetime": datetime,
-                "type": "open_15m_avg",
+                "type": itype,
                 "value": metadata.get('value'),
                 "content": results['documents'][0] if results.get('documents') else ""
             },
@@ -69,7 +69,7 @@ async def get_info(
 
 @router.post("/add/")
 async def add_or_update_info(
-    data: Open15MAvgRequest
+    data: RequestDataType
 ):
     try:
         stock_id = data.stock_id
@@ -129,7 +129,7 @@ async def add_or_update_info(
             metadata = {
                 "attached_stock_id": stock_id.lower(),
                 "datetime": formatted_date,
-                "type": "open_15m_avg",
+                "type": itype,
                 "value": data.value
             }
 
@@ -146,12 +146,12 @@ async def add_or_update_info(
                     "id": new_id,
                     "stock_id": stock_id.lower(),
                     "datetime": formatted_date,
-                    "type": "open_15m_avg",
+                    "type": itype,
                     "value": data.value,
                     "content": data.content,
                     "action": "created"
                 },
-                "message": f"成功添加股票 {stock_id} 在 {formatted_date} 的15分钟开盘平均价数据"
+                "message": f"成功添加股票 {stock_id} 在 {formatted_date} 的 {itype} 数据"
             }
 
         return JSONResponse(content=response_data)

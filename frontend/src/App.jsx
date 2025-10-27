@@ -23,6 +23,16 @@ export default function SignallyApp() {
   const [dashboardError, setDashboardError] = useState(null);
   // 动态任务动画 tick
   const [statusTick, setStatusTick] = useState(0);
+  // 清洗 last_message：移除 #，多余空行折叠，去首尾空白
+  const sanitizeLastMessage = (msg) => {
+    if (!msg) return '';
+    let s = String(msg).replace(/#/g, '');
+    // 将所有回车/换行替换为空格
+    s = s.replace(/[\r\n]+/g, ' ');
+    // 折叠多余空白
+    s = s.replace(/\s+/g, ' ');
+    return s.trim();
+  };
   // 添加定时器让任务动画运行（之前遗漏导致不动）
   useEffect(() => {
     const id = setInterval(() => setStatusTick(t => (t + 1) % 3), 450);
@@ -185,8 +195,8 @@ export default function SignallyApp() {
                           if (!todayYMD) setTodayYMD(dp);
                         }
                         if (data?.system_status !== undefined && data.system_status !== null) setSystemStatus(String(data.system_status));
-                        const lm = data?.last_message;
-                        if (lm === undefined || lm === null || lm === '') setLastMessage(''); else setLastMessage(String(lm));
+                        const lmRaw = data?.last_message;
+                        if (lmRaw === undefined || lmRaw === null || lmRaw === '') setLastMessage(''); else setLastMessage(sanitizeLastMessage(lmRaw));
                         setDashboardError(null);
                       } catch (er) {
                         setDashboardError(er.message || String(er));
@@ -263,8 +273,11 @@ export default function SignallyApp() {
           }
         }
         if (data?.system_status !== undefined && data.system_status !== null) setSystemStatus(String(data.system_status));
-        const lm = data?.last_message;
-        if (lm === undefined || lm === null || lm === '') setLastMessage(''); else setLastMessage(String(lm));
+        const lmRaw = data?.last_message;
+        if (lmRaw === undefined || lmRaw === null || lmRaw === '') setLastMessage(''); else {
+          const cleaned = sanitizeLastMessage(lmRaw);
+          setLastMessage(cleaned);
+        }
         setDashboardError(null);
       } catch (e) {
         if (active && beijingNow === null) {
