@@ -1,11 +1,7 @@
-import datetime
-import logging
 import uuid
 import os
-import json
 from typing import Dict, List, Any, Union
 
-import pytest
 from fastapi import HTTPException
 
 from backend.api.deps import ChromaDBSingleton
@@ -18,7 +14,7 @@ os.environ['CHROMA_TELEMETRY_DISABLED'] = 'True'
 
 from chromadb import HttpClient
 from chromadb.config import Settings
-from backend.common import logger_client, sconfig
+from backend.common import sconfig
 
 # 创建客户端时明确禁用遥测
 client = HttpClient(
@@ -493,3 +489,84 @@ def test_evaluate_conclusions():
 
         rationale = f"，预测依据：{doc}" if doc else ""
         print(f"{d} 预测 {pred}({conf_str}) ，当天开盘15分钟均价 {open15_txt}，前一交易日({prev_date_txt})收盘价 {prev_close_txt}，{status}{rationale}")
+
+def test_cleanup_before_cutoff():
+    """清理所有集合中 datetime < cutoff (默认 20251020) 的文档。
+
+    用法 (CMD):
+      set CLEAN_CUTOFF=20251020 & pytest backend\db\test_db_mgr.py::test_cleanup_before_cutoff -s
+    PowerShell:
+      $env:CLEAN_CUTOFF='20251020'; pytest backend/db/test_db_mgr.py::test_cleanup_before_cutoff -s
+
+    说明:
+      - cutoff 为字符串形式 YYYYMMDD，比较采用字典序 (同格式情况下有效)
+      - 仅当 metadata 中存在 datetime 且长度为 8 的记录进行判定
+      - stocks 集合通常无日期，跳过不删除
+      - 删除操作按批次执行，避免一次性删除过多导致异常
+    """
+    cutoff = os.getenv("CLEAN_CUTOFF", "20251020")
+    if not cutoff.isdigit() or len(cutoff) != 8:
+        print(f"[CLEAN] 非法 cutoff={cutoff}，需为 YYYYMMDD 格式")
+        return
+    try:
+        collections = client.list_collections() or []
+    except Exception as e:
+        print(f"[CLEAN] 获取集合列表失败: {e}")
+        return
+    if not collections:
+        print("[CLEAN] 无集合可清理")
+        return
+
+    total_deleted = 0
+    per_collection_stats = {}
+    batch_size = 500
+    for col in collections:
+        name = getattr(col, 'name', None) or getattr(col, 'id', 'unknown')
+        try:
+            sc = client.get_collection(name)
+        except Exception as e:
+            print(f"[CLEAN] 跳过集合={name} (获取失败: {e})")
+            continue
+        # 分页拉取所有数据 (仅需 metadatas + ids)
+        offset = 0
+        to_delete: List[str] = []
+        while True:
+            try:
+                batch = sc.get(limit=1000, offset=offset, include=["metadatas"])
+            except Exception as e:
+                print(f"[CLEAN] 集合={name} 在 offset={offset} 获取失败: {e}")
+                break
+            ids = batch.get("ids", []) if isinstance(batch, dict) else []
+            metas = batch.get("metadatas", []) if isinstance(batch, dict) else []
+            if not ids:
+                break
+            for i, _id in enumerate(ids):
+                meta = metas[i] if i < len(metas) else {}
+                if not isinstance(meta, dict):
+                    continue
+                dt = meta.get("datetime")
+                if isinstance(dt, str) and len(dt) == 8 and dt.isdigit():
+                    if dt < cutoff:
+                        to_delete.append(_id)
+            offset += len(ids)
+        if not to_delete:
+            per_collection_stats[name] = {"deleted": 0, "skipped": 0}
+            print(f"[CLEAN] 集合={name} 无需删除记录")
+            continue
+        # 批量删除
+        deleted_here = 0
+        for i in range(0, len(to_delete), batch_size):
+            slice_ids = to_delete[i:i+batch_size]
+            try:
+                sc.delete(ids=slice_ids)
+                deleted_here += len(slice_ids)
+            except Exception as e:
+                print(f"[CLEAN] 集合={name} 删除批次失败 (size={len(slice_ids)}): {e}")
+        total_deleted += deleted_here
+        per_collection_stats[name] = {"deleted": deleted_here, "skipped": 0}
+        print(f"[CLEAN] 集合={name} 已删除 {deleted_here} 条 (cutoff={cutoff})")
+
+    print(f"[CLEAN] 完成，总删除条数={total_deleted}")
+    # 汇总输出
+    for cname, stats in per_collection_stats.items():
+        print(f"[CLEAN] 统计 {cname}: deleted={stats['deleted']}")

@@ -5,6 +5,9 @@
 
 ---
 
+![Signally HOME](./HOME.png)
+
+
 ## 📜 免责声明 | Disclaimer
 
 **心歌（Signally）** 仅用于学术研究与作者个人研究使用。  
@@ -119,4 +122,4 @@ See the [LICENSE](./LICENSE) file for details.
 
 Author: **Jacky Zhang**  
 Project: [Signally](https://github.com/hzhan11/signally)  
-Email: xjtu_xiangxiang@hotmail.com  
+Email: xjtu_xiangxiang@hotmail.com
