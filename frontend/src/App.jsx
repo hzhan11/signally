@@ -577,8 +577,8 @@ export default function SignallyApp() {
             </div>
             <div className="text-xs sm:text-[13px] text-orange-600 whitespace-nowrap ml-auto pl-2">
               {selectedStock && hitStats.total > 0 ? (
-                <span className="font-bold">总命中率 {hitStats.hit}/{hitStats.total} ({Math.round(hitStats.hit / hitStats.total * 100)}%)</span>
-              ) : selectedStock ? <span className="text-gray-400 font-bold">总命中率 --</span> : null}
+                <span className="font-bold">预测正确 {hitStats.hit}/{hitStats.total} ({Math.round(hitStats.hit / hitStats.total * 100)}%)</span>
+              ) : selectedStock ? <span className="text-gray-400 font-bold">预测正确 --</span> : null}
             </div>
           </div>
         </div>
