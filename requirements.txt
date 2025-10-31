@@ -1,0 +1,41 @@
+# Core web framework
+fastapi>=0.110.0
+uvicorn[standard]>=0.30.0
+
+# Vector DB / Embeddings store
+chromadb>=0.5.0
+
+# Data models & settings
+pydantic>=2.7.0
+pydantic-settings>=2.0.0
+
+# Async HTTP client
+httpx>=0.27.0
+
+# Logging & console colors
+colorama>=0.4.6
+
+# Timezone & date utilities
+pytz>=2024.1
+python-dateutil>=2.8.2
+
+# Web automation & scraping
+selenium>=4.22.0
+
+# Finance & market data
+akshare>=1.11.0
+yfinance>=0.2.40
+pandas>=2.2.0
+numpy>=1.26.0
+
+# Google Generative AI SDK
+google-genai>=0.1.0
+
+# FastMCP (custom / third-party). If not available on PyPI, install from its source.
+fastmcp
+
+# NOTE:
+# - Versions are approximate minimums; adjust/pin as needed for reproducibility.
+# - fastmcp may require manual installation if not published on PyPI.
+# - Transitive dependencies (h11, httptools, websockets, requests, etc.) will be installed automatically.
+
