@@ -549,7 +549,7 @@ export default function SignallyApp() {
             <button onClick={() => setNavView('contact')} className={`text-orange-600 hover:underline ${navView==='contact'?'underline':''}`}>联系作者</button>
           </div>
           <div className="text-orange-600 text-sm ml-auto pl-2">
-            当前版本：1.0.2
+            当前版本：1.0.4
           </div>
         </div>
         <div className="h-6" />

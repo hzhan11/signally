@@ -5,8 +5,9 @@
 
 ---
 
-![Signally HOME](./HOME.png)
+https://www.signally.ink/
 
+![Signally HOME](./HOME.png)
 
 ## 📜 免责声明 | Disclaimer
 
@@ -123,3 +124,4 @@ See the [LICENSE](./LICENSE) file for details.
 Author: **Jacky Zhang**  
 Project: [Signally](https://github.com/hzhan11/signally)  
 Email: xjtu_xiangxiang@hotmail.com
+Wechat: hzhan11
