@@ -236,19 +236,7 @@ export default function SignallyApp() {
     );
   };
 
-  // 优先使用环境变量；否则如果不是本机域名，尝试用当前访问域名推断后端端口 8000
-  const derivedHost = (() => {
-    try {
-      if (typeof window !== 'undefined' && window.location) {
-        const h = window.location.hostname;
-        if (h && !['localhost','127.0.0.1','::1'].includes(h)) {
-          return `${window.location.protocol}//${h}:8000`;
-        }
-      }
-    } catch(_) {}
-    return 'http://localhost:8000';
-  })();
-  const API_BASE = import.meta.env.VITE_API_BASE || derivedHost;
+  const API_BASE = 'https://api.signally.ink'
 
   // Fetch aggregated dashboard data (time + system_status + last_message) every 30s
   useEffect(() => {
