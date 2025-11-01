@@ -2,40 +2,24 @@ import asyncio
 import logging
 
 import time
-from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchElementException
-from dateutil.parser import parse
-from backend.common import logger_client, sconfig
-
-def find_first_less_than(time_array, target_time):
-    for i, time_str in enumerate(time_array):
-        if time_str < target_time:  # String comparison works for ISO format
-            return i
-    return -1
+from backend.common import sconfig
+from backend.mcp.servers.dep.chromeexe import get_chromedriver_path
 
 class ClsTelSearcher:
 
     def __init__(self, fun):
-
-        current_file = Path(__file__)
-        parent_dir = current_file.parent.parent / "dep" / "chromedriver.exe"
-
-        chrome_driver_path = str(parent_dir)
+        chrome_driver_path = get_chromedriver_path()
         chrome_options = Options()
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         chrome_options.add_argument("--headless")
-
         self.driver = webdriver.Chrome(service=Service(chrome_driver_path), options=chrome_options)
-
-        self.driver.execute_cdp_cmd("Emulation.setTimezoneOverride", {
-            "timezoneId": "Asia/Shanghai"
-        })
-
+        self.driver.execute_cdp_cmd("Emulation.setTimezoneOverride", {"timezoneId": "Asia/Shanghai"})
         self.call_back_fun = fun
         self.eles = []
 

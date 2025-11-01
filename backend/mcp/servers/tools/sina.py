@@ -6,10 +6,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 import time
-from pathlib import Path
-from dateutil.parser import parse
-from backend.common import logger_client, sconfig
+from backend.common import sconfig
 from backend.common.utils import bj_time
+from backend.mcp.servers.dep.chromeexe import get_chromedriver_path
 
 
 def find_first_less_than(time_array, target_time):
@@ -21,11 +20,7 @@ def find_first_less_than(time_array, target_time):
 class SinaFinSearcher:
 
     def __init__(self, stock_id, target_time, fun):
-
-        current_file = Path(__file__)
-        parent_dir = current_file.parent.parent / "dep" / "chromedriver.exe"
-
-        chrome_driver_path = str(parent_dir)
+        chrome_driver_path = get_chromedriver_path()
         chrome_options = Options()
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
@@ -59,14 +54,14 @@ class SinaFinSearcher:
             rights = self.driver.find_elements(
                 By.XPATH, '//ul[@data-reactid=".0.0.3.1.0.3.0.1"]//li//span'
             )
-            times = [time.text for time in rights]
-            index = find_first_less_than(times, self.target_time)
+            times_list = [elem.text for elem in rights]
+            index = find_first_less_than(times_list, self.target_time)
 
             self.whole_urls.extend(urls[0:index])
             self.whole_titles.extend(titles[0:index])
-            self.whole_times.extend(times[0:index])
+            self.whole_times.extend(times_list[0:index])
 
-            if index <= len(times):
+            if index <= len(times_list):
                 break
 
         logging.info(f"about {len(self.whole_urls)} related pages found")

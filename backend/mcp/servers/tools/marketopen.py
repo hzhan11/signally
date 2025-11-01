@@ -1,14 +1,10 @@
 import logging
 
 from selenium import webdriver
-from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-import time
-from pathlib import Path
-from dateutil.parser import parse
-from backend.common import logger_client, sconfig
 from backend.mcp.servers.prompt.gminiadaptor import GaminiAdaptor
+from backend.mcp.servers.dep.chromeexe import get_chromedriver_path
 
 class MarketOpening:
 
@@ -16,10 +12,8 @@ class MarketOpening:
         pass
 
     def isopen(self,date):
-        current_file = Path(__file__)
-        parent_dir = current_file.parent.parent / "dep" / "chromedriver.exe"
-
-        chrome_driver_path = str(parent_dir)
+        # use shared utility
+        chrome_driver_path = get_chromedriver_path()
         chrome_options = Options()
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
@@ -37,10 +31,7 @@ class MarketOpening:
         prompt += content
         r = llm.generate(prompt=prompt, level="high")
         self.driver.quit()
-        if r.count("Y") == 1:
-            return True
-        else:
-            return False
+        return True if r.count("Y") == 1 else False
 
 
 if __name__ == "__main__":
