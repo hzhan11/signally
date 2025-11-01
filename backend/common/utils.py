@@ -32,7 +32,7 @@ async def wait_till(target_time_str, progress_call_back):
             break
         else:
             progress = 10000 - int((target_datetime - now).total_seconds() * 10000 / (target_datetime - start).total_seconds())
-            await progress_call_back(progress, 10000, f"<wait> now is {now.strftime("%H:%M:%S")} and waiting for {target_time_str}")
+            await progress_call_back(progress, 10000, f"<wait> now is {now.strftime('%H:%M:%S')} and waiting for {target_time_str}")
             await asyncio.sleep(60)
 
 async def ppp(progress,total,m):
